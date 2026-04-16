@@ -1,0 +1,6 @@
+person_username,friend_username
+leo,tomasa
+leo,alice
+tomasa,leo
+alice,tomasa
+bob,alice

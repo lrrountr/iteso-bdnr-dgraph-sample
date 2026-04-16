@@ -1,0 +1,5 @@
+username,name,dob,married,location_lat,location_lon
+leo,Leo,1984-07-09T10:00:00,True,45.485168,-122.804489
+tomasa,Tomasa,2010-05-12T09:30:00,False,45.515,-122.675
+alice,Alice,1992-11-23T08:15:00,False,37.7749,-122.4194
+bob,Bob,1988-03-01T13:45:00,True,40.7128,-74.0060
