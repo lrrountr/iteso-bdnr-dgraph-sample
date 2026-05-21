@@ -1,100 +1,203 @@
-# iteso-bdnr-dgraph
+# ITESO BDNR - Dgraph Sample
 
-A place to share dgraph app code
+A sample social network application demonstrating Dgraph graph database patterns with a REST API architecture.
 
-### Setup a python virtual env with python dgraph installed
+## Architecture
+
 ```
-# If pip is not present in you system
-sudo apt update
-sudo apt install python3-pip
+┌────────────┐       ┌────────────┐       ┌────────────┐
+│   Client   │ HTTP  │   Server   │ gRPC  │   Dgraph   │
+│   (CLI)    │ ────► │ (REST API) │ ────► │  (Docker)  │
+└────────────┘       └────────────┘       └────────────┘
+     client/              server/           port 9080
+```
 
-# Install and activate virtual env (Linux/MacOS)
-python3 -m pip install virtualenv
-python3 -m venv ./venv
-source ./venv/bin/activate
+## Project Structure
 
-# Install and activate virtual env (Windows)
-python3 -m pip install virtualenv
-python3 -m venv ./venv
-.\venv\Scripts\Activate.ps1
+```
+iteso-bdnr-dgraph-sample/
+├── server/
+│   ├── app.py          # Falcon application and routes
+│   ├── resources.py    # REST endpoint handlers
+│   └── model.py        # Dgraph mutations and queries
+├── client/
+│   └── cli.py          # Command-line client
+├── data/
+│   ├── persons.csv     # Person nodes
+│   ├── schools.csv     # School nodes
+│   ├── attended.csv    # Person → School edges
+│   └── friendships.csv # Person ↔ Person edges
+├── requirements.txt
+└── README.md
+```
 
-# Install project python requirements
+## Data Model
+
+```graphql
+type Person {
+    username    # Unique identifier (lowercase)
+    name        # Display name
+    friend      # Edge → Person  (@reverse: queryable from both sides)
+    married     # bool
+    location    # geo point
+    dob         # datetime
+    attended    # Edge → School  (@reverse: queryable from both sides)
+}
+
+type School {
+    name
+}
+```
+
+Relationships use Dgraph's `@reverse` directive — adding one edge automatically makes it traversable from both directions.
+
+## Setup
+
+You will need **2 terminal windows**: one for the server, one for the CLI.
+
+### Step 1: Start Dgraph
+
+```bash
+docker run --name dgraph -p 8080:8080 -p 9080:9080 -d dgraph/standalone
+
+# Dgraph takes ~10 seconds to start
+# Port 8080: Ratel UI  (http://localhost:8080)
+# Port 9080: gRPC endpoint (used by the API server)
+```
+
+### Step 2: Install Dependencies
+
+```bash
+python3 -m venv venv
+source venv/bin/activate        # Linux/Mac
+# .\venv\Scripts\Activate.ps1   # Windows
+
 pip install -r requirements.txt
 ```
 
-### To load data
-Ensure you have a running dgraph instance
-i.e.:
-```
-docker run --name dgraph -d -p 8080:8080 -p 9080:9080  dgraph/standalone
+### Step 3: Start the API Server
+
+```bash
+cd server
+uvicorn app:app --reload --port 8001
 ```
 
-### CLI usage
-The repo now uses `argparse` instead of an interactive menu.
+### Step 4: Apply Schema
 
-Create sample data from CSV files in `./data`:
-```
-python3 main.py create-data
-```
+```bash
+cd client
+source ../venv/bin/activate
 
-Or specify a different sample directory:
-```
-python3 main.py create-data --data-dir ./data
+python cli.py setup
 ```
 
-Search for a person:
-```
-python3 main.py search-person --name Leo
+### Step 5: (Optional) Load Demo Data
+
+```bash
+python cli.py seed
 ```
 
-Delete a person:
-```
-python3 main.py delete-person --name Leo
+## CLI Commands
+
+### Admin
+
+| Command | Description |
+|---------|-------------|
+| `status` | Check if API is running |
+| `setup` | Apply graph schema (types + predicates, no data) |
+| `seed` | Load demo persons, schools and relationships from CSV |
+| `drop` | Drop all data and schema (with confirmation) |
+
+### Graph Operations
+
+| Command | Description |
+|---------|-------------|
+| `add-person --username U --name N` | Add a person node |
+| `add-school --name N` | Add a school node |
+| `befriend --person U --friend U2` | Add friendship edge (bidirectional) |
+| `enroll --person U --school S` | Add person→school attendance edge |
+| `persons` | List all persons |
+| `search --name N` | Search person — shows friends and schools |
+| `delete --name N` | Delete a person |
+| `schools` | List all schools |
+
+### Typical Session
+
+```bash
+# Admin
+python cli.py setup
+python cli.py seed
+
+# Or build the graph manually:
+python cli.py add-school --name "ITESO"
+python cli.py add-person --username alice --name "Alice" --dob "1995-03-10"
+python cli.py add-person --username bob   --name "Bob"   --dob "1993-07-22"
+
+# Add relationships
+python cli.py befriend --person alice --friend bob
+python cli.py enroll   --person alice --school "ITESO"
+
+# Explore
+python cli.py persons
+python cli.py search --name Alice     # shows friends + schools
+python cli.py schools
 ```
 
-Drop all data and schema:
-```
-python3 main.py drop-all
+## REST API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/setup` | Apply schema (no data) |
+| POST | `/seed` | Load demo data |
+| POST | `/drop` | Drop all data and schema |
+| GET | `/persons` | List all persons |
+| POST | `/persons` | Add a person node |
+| GET | `/persons/{name}` | Search person (with friends + schools) |
+| DELETE | `/persons/{name}` | Delete a person |
+| POST | `/persons/{username}/friends` | Add friendship edge |
+| POST | `/persons/{username}/schools` | Add attendance edge |
+| GET | `/schools` | List all schools |
+| POST | `/schools` | Add a school node |
+
+### Example API Calls
+
+```bash
+curl http://localhost:8001/health
+curl -X POST http://localhost:8001/setup
+curl -X POST http://localhost:8001/persons \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "name": "Alice", "dob": "1995-03-10"}'
+curl -X POST http://localhost:8001/schools \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ITESO"}'
+curl -X POST http://localhost:8001/persons/alice/friends \
+  -H "Content-Type: application/json" \
+  -d '{"friend_username": "bob"}'
+curl -X POST http://localhost:8001/persons/alice/schools \
+  -H "Content-Type: application/json" \
+  -d '{"school_name": "ITESO"}'
+curl http://localhost:8001/persons/Alice
 ```
 
-Ingest using separate CSV files for people, schools, attendance, and friendships:
-```
-python3 main.py ingest-multi-csv \
-  --people data/persons.csv \
-  --schools data/schools.csv \
-  --attended data/attended.csv \
-  --friendships data/friendships.csv
-```
+## Environment Variables
 
-If your attendance CSV uses `school_name` as the relationship key, the default arguments already match this format. Otherwise, customize the CSV field names with:
-```
-python3 main.py ingest-multi-csv \
-  --people data/persons.csv \
-  --schools data/schools.csv \
-  --attended data/attended.csv \
-  --friendships data/friendships.csv \
-  --school-field name \
-  --attendance-school-field school_name
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `API_URL` | `http://localhost:8001` | API URL (client) |
+| `DGRAPH_HOST` | `localhost` | Dgraph host (server) |
+| `DGRAPH_PORT` | `9080` | Dgraph gRPC port (server) |
 
-### CSV format
-The ingestion commands support CSV files with a header row. Useful headers include:
-- `username` as the unique person key (recommended)
-- `name` as the display name
-- `married`
-- `dob`
-- `location_lat`, `location_lon`
-- `location` (formatted as `lat,lon`)
-- `person_username` and `school_name` for the attendance file
-- `person_username` and `friend_username` for the friendships file
+## Troubleshooting
 
-### Username normalization
-Person usernames are stored in lowercase, so duplicates like `Leo` and `leo` will be treated the same.
-School names are also normalized to lower-case for uniqueness, so `ITESO` and `iteso` will resolve to the same school.
+**"Cannot connect to API"** — make sure the server is running: `cd server && uvicorn app:app --reload --port 8001`
 
-### Sample data files
-Sample files are available in `data/`:
-- `data/persons.csv`
-- `data/schools.csv`
-- `data/attended.csv`
-- `data/friendships.csv`
+**"Failed to connect to Dgraph"** — wait ~10s after starting Docker, then check: `docker ps` or open http://localhost:8080
+
+**"No persons found"** — run `setup` then `seed` (or `add-person`)
+
+## Ratel UI
+
+Dgraph includes a web UI for exploring data and running queries:
+- Open http://localhost:8080 in your browser
+- Use the Query tab to run DQL queries directly against the graph
