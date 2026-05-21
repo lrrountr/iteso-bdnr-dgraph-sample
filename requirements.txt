@@ -1,1 +1,8 @@
+# Server dependencies
 pydgraph
+falcon
+uvicorn
+
+# Client dependencies
+requests
+tabulate
