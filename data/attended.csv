@@ -1,6 +1,6 @@
-person_username,school_name
-leo,ITESO
-leo,MIT
-tomasa,ITESO
-alice,MIT
-bob,Stanford
+person_username,school_name,year_start,year_end,degree
+leo,ITESO,2005,2010,Computer Science
+leo,MIT,2011,2013,Masters in CS
+tomasa,ITESO,2006,2011,Business Administration
+alice,MIT,2010,2015,Electrical Engineering
+bob,Stanford,2012,2016,Mathematics

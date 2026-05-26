@@ -185,10 +185,11 @@ class FriendshipsResource:
         """
         POST /persons/{username}/friends — add a friendship edge.
 
-        Body: { "friend_username": "bob" }
+        Body: { "friend_username": "bob", "since": "2010-01-01", "close": true }
 
         In Dgraph, the @reverse directive on the 'friend' predicate means
         this single write makes the relationship queryable from both sides.
+        Facets (since, close) are stored on the edge itself.
         """
         try:
             body = await req.get_media()
@@ -198,7 +199,11 @@ class FriendshipsResource:
                 resp.status = falcon.HTTP_400
                 return
 
-            model.add_friendship(self.connection.client, username, friend_username)
+            since = body.get('since')
+            close = body.get('close')
+
+            model.add_friendship(self.connection.client, username, friend_username,
+                                 since=since, close=close)
             resp.media = {
                 'status': 'success',
                 'message': f"Friendship added: {username} ↔ {friend_username}",
@@ -223,7 +228,9 @@ class AttendanceResource:
         """
         POST /persons/{username}/schools — enroll a person in a school.
 
-        Body: { "school_name": "ITESO" }
+        Body: { "school_name": "ITESO", "year_start": 2005, "year_end": 2010, "degree": "Computer Science" }
+
+        Facets (year_start, year_end, degree) are stored on the edge itself, not on the school node.
         """
         try:
             body = await req.get_media()
@@ -233,7 +240,12 @@ class AttendanceResource:
                 resp.status = falcon.HTTP_400
                 return
 
-            model.add_attendance(self.connection.client, username, school_name)
+            model.add_attendance(
+                self.connection.client, username, school_name,
+                year_start=body.get('year_start'),
+                year_end=body.get('year_end'),
+                degree=body.get('degree'),
+            )
             resp.media = {
                 'status': 'success',
                 'message': f"{username} enrolled in {school_name}",

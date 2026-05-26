@@ -149,12 +149,18 @@ def cmd_add_school(name):
     print(f"School added!\n  UID:  {d['uid']}\n  Name: {d['name']}")
 
 
-def cmd_befriend(person, friend):
+def cmd_befriend(person, friend, since=None, close=None):
     """
     Add a friendship edge between two persons.
     The @reverse directive makes it queryable from both sides automatically.
     """
-    r = _post(f'/persons/{person}/friends', {'friend_username': friend})
+    body = {'friend_username': friend}
+    if since:
+        body['since'] = since
+    if close is not None:
+        body['close'] = close
+
+    r = _post(f'/persons/{person}/friends', body)
     if not r.ok:
         _err(f"Failed: {r.json().get('error', r.text)}")
 
@@ -163,9 +169,17 @@ def cmd_befriend(person, friend):
     print(f"Note: {d.get('note', '')}")
 
 
-def cmd_enroll(person, school):
+def cmd_enroll(person, school, year_start=None, year_end=None, degree=None):
     """Add a person-to-school attendance edge."""
-    r = _post(f'/persons/{person}/schools', {'school_name': school})
+    body = {'school_name': school}
+    if year_start is not None:
+        body['year_start'] = year_start
+    if year_end is not None:
+        body['year_end'] = year_end
+    if degree:
+        body['degree'] = degree
+
+    r = _post(f'/persons/{person}/schools', body)
     if not r.ok:
         _err(f"Failed: {r.json().get('error', r.text)}")
 
@@ -221,13 +235,28 @@ def cmd_search(name):
         if friends:
             print(f"\nFriends ({len(friends)}):")
             for f in friends:
-                print(f"  - {f.get('name')} ({f.get('username')})")
+                since = f.get('friend|since', '')
+                close = f.get('friend|close')
+                facets = ', '.join(filter(None, [
+                    f"since {since}" if since else '',
+                    'close friend' if close else '',
+                ]))
+                suffix = f"  [{facets}]" if facets else ''
+                print(f"  - {f.get('name')} ({f.get('username')}){suffix}")
 
         schools = person.get('attended', [])
         if schools:
             print(f"\nSchools ({len(schools)}):")
             for s in schools:
-                print(f"  - {s.get('name')}")
+                year_start = s.get('attended|year_start', '')
+                year_end   = s.get('attended|year_end', '')
+                degree     = s.get('attended|degree', '')
+                parts = ', '.join(filter(None, [
+                    f"{year_start}–{year_end}" if year_start or year_end else '',
+                    degree,
+                ]))
+                suffix = f"  [{parts}]" if parts else ''
+                print(f"  - {s.get('name')}{suffix}")
 
     print(f"\n{'='*50}")
 
@@ -307,10 +336,15 @@ Cleanup:
     p = sub.add_parser('befriend', help='Add a friendship edge (bidirectional via @reverse)')
     p.add_argument('--person', required=True, help='Username of first person')
     p.add_argument('--friend', required=True, help='Username of second person')
+    p.add_argument('--since',  help='Date the friendship started (YYYY-MM-DD)')
+    p.add_argument('--close',  action='store_true', default=None, help='Mark as a close friendship')
 
     p = sub.add_parser('enroll', help='Add a person-to-school attendance edge')
-    p.add_argument('--person', required=True, help='Person username')
-    p.add_argument('--school', required=True, help='School name')
+    p.add_argument('--person',      required=True, help='Person username')
+    p.add_argument('--school',      required=True, help='School name')
+    p.add_argument('--year-start',  type=int, dest='year_start', help='Year enrollment started')
+    p.add_argument('--year-end',    type=int, dest='year_end',   help='Year enrollment ended')
+    p.add_argument('--degree',      help='Degree or program name')
 
     sub.add_parser('persons', help='List all persons')
 
@@ -332,8 +366,8 @@ Cleanup:
                                                        args.married, args.dob,
                                                        args.lat, args.lon)
     elif args.command == 'add-school': cmd_add_school(args.name)
-    elif args.command == 'befriend':   cmd_befriend(args.person, args.friend)
-    elif args.command == 'enroll':     cmd_enroll(args.person, args.school)
+    elif args.command == 'befriend':   cmd_befriend(args.person, args.friend, args.since, args.close)
+    elif args.command == 'enroll':     cmd_enroll(args.person, args.school, args.year_start, args.year_end, args.degree)
     elif args.command == 'persons':    cmd_persons()
     elif args.command == 'search':     cmd_search(args.name)
     elif args.command == 'delete':     cmd_delete(args.name)

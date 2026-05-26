@@ -1,6 +1,6 @@
-person_username,friend_username
-leo,tomasa
-leo,alice
-tomasa,leo
-alice,tomasa
-bob,alice
+person_username,friend_username,since,close
+leo,tomasa,2005-03-15,true
+leo,alice,2011-09-01,false
+tomasa,leo,2005-03-15,true
+alice,tomasa,2010-06-20,true
+bob,alice,2013-04-10,false
