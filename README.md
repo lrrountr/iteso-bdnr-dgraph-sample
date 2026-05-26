@@ -51,6 +51,17 @@ type School {
 
 Relationships use Dgraph's `@reverse` directive — adding one edge automatically makes it traversable from both directions.
 
+### Facets
+
+Facets are key-value pairs stored on edges (not nodes). They capture metadata about a relationship without polluting the node itself.
+
+| Edge | Facets |
+|------|--------|
+| `friend` | `since` (date string), `close` (bool) |
+| `attended` | `year_start` (int), `year_end` (int), `degree` (string) |
+
+Facets require no schema declaration — they are stored automatically when set on a mutation.
+
 ## Setup
 
 You will need **2 terminal windows**: one for the server, one for the CLI.
@@ -114,8 +125,8 @@ python cli.py seed
 |---------|-------------|
 | `add-person --username U --name N` | Add a person node |
 | `add-school --name N` | Add a school node |
-| `befriend --person U --friend U2` | Add friendship edge (bidirectional) |
-| `enroll --person U --school S` | Add person→school attendance edge |
+| `befriend --person U --friend U2 [--since DATE] [--close]` | Add friendship edge (bidirectional) |
+| `enroll --person U --school S [--year-start Y] [--year-end Y] [--degree D]` | Add person→school attendance edge |
 | `persons` | List all persons |
 | `search --name N` | Search person — shows friends and schools |
 | `delete --name N` | Delete a person |
@@ -133,9 +144,9 @@ python cli.py add-school --name "ITESO"
 python cli.py add-person --username alice --name "Alice" --dob "1995-03-10"
 python cli.py add-person --username bob   --name "Bob"   --dob "1993-07-22"
 
-# Add relationships
-python cli.py befriend --person alice --friend bob
-python cli.py enroll   --person alice --school "ITESO"
+# Add relationships (with facets)
+python cli.py befriend --person alice --friend bob --since "2011-09-01"
+python cli.py enroll   --person alice --school "ITESO" --year-start 2010 --year-end 2015 --degree "Computer Science"
 
 # Explore
 python cli.py persons
@@ -173,10 +184,10 @@ curl -X POST http://localhost:8001/schools \
   -d '{"name": "ITESO"}'
 curl -X POST http://localhost:8001/persons/alice/friends \
   -H "Content-Type: application/json" \
-  -d '{"friend_username": "bob"}'
+  -d '{"friend_username": "bob", "since": "2011-09-01", "close": false}'
 curl -X POST http://localhost:8001/persons/alice/schools \
   -H "Content-Type: application/json" \
-  -d '{"school_name": "ITESO"}'
+  -d '{"school_name": "ITESO", "year_start": 2010, "year_end": 2015, "degree": "Computer Science"}'
 curl http://localhost:8001/persons/Alice
 ```
 

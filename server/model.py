@@ -96,10 +96,11 @@ def create_school(client, name):
         txn.discard()
 
 
-def add_friendship(client, person_username, friend_username):
+def add_friendship(client, person_username, friend_username, since=None, close=None):
     """
     Add a friendship edge between two persons.
     The @reverse directive on 'friend' makes this bidirectional automatically.
+    Facets (since, close) are stored on the edge itself, not on the nodes.
     """
     person_uid = _get_existing_person_uid_by_username(client, person_username)
     if not person_uid:
@@ -109,18 +110,25 @@ def add_friendship(client, person_username, friend_username):
     if not friend_uid:
         raise ValueError(f"Person '{friend_username}' not found")
 
+    friend_ref = {'uid': friend_uid}
+    if since:
+        friend_ref['friend|since'] = since
+    if close is not None:
+        friend_ref['friend|close'] = bool(close)
+
     txn = client.txn()
     try:
-        txn.mutate(set_obj={'uid': person_uid, 'friend': [{'uid': friend_uid}]}, commit_now=True)
+        txn.mutate(set_obj={'uid': person_uid, 'friend': [friend_ref]}, commit_now=True)
         log.info(f"Friendship added: {person_username} ↔ {friend_username}")
     finally:
         txn.discard()
 
 
-def add_attendance(client, person_username, school_name):
+def add_attendance(client, person_username, school_name, year_start=None, year_end=None, degree=None):
     """
     Add an attendance edge from a person to a school.
     The @reverse directive on 'attended' makes it queryable from the school side too.
+    Facets (year_start, year_end, degree) are stored on the edge itself, not on the nodes.
     """
     person_uid = _get_existing_person_uid_by_username(client, person_username)
     if not person_uid:
@@ -130,9 +138,17 @@ def add_attendance(client, person_username, school_name):
     if not school_uid:
         raise ValueError(f"School '{school_name}' not found")
 
+    school_ref = {'uid': school_uid}
+    if year_start is not None:
+        school_ref['attended|year_start'] = int(year_start)
+    if year_end is not None:
+        school_ref['attended|year_end'] = int(year_end)
+    if degree:
+        school_ref['attended|degree'] = degree
+
     txn = client.txn()
     try:
-        txn.mutate(set_obj={'uid': person_uid, 'attended': [{'uid': school_uid}]}, commit_now=True)
+        txn.mutate(set_obj={'uid': person_uid, 'attended': [school_ref]}, commit_now=True)
         log.info(f"Attendance added: {person_username} → {school_name}")
     finally:
         txn.discard()
@@ -212,12 +228,12 @@ def search_person(client, name):
             married
             location
             dob
-            friend {
+            friend @facets(since, close) {
                 uid
                 username
                 name
             }
-            attended {
+            attended @facets(year_start, year_end, degree) {
                 uid
                 name
             }
@@ -462,16 +478,16 @@ def ingest_attendance_csv(client, csv_path, person_field='person_username', scho
             summary['skipped'] += 1
             continue
 
-        txn = client.txn()
+        year_start = row.get('year_start') or None
+        year_end = row.get('year_end') or None
+        degree = row.get('degree') or None
+
         try:
-            mutation = {'uid': person_uid, 'attended': [{'uid': school_uid}]}
-            txn.mutate(set_obj=mutation)
-            txn.commit()
+            add_attendance(client, person_username, school_name,
+                           year_start=year_start, year_end=year_end, degree=degree)
             summary['processed'] += 1
         except Exception as e:
             summary['errors'].append(str(e))
-        finally:
-            txn.discard()
 
     return summary
 
@@ -497,25 +513,37 @@ def ingest_friendships_csv(client, csv_path, person_field='person_username', fri
             summary['skipped'] += 1
             continue
 
+        since = row.get('since') or None
+        close_val = row.get('close')
+        close = _parse_bool(close_val) if close_val else None
+
         if friend_uid:
-            friend_ref = {'uid': friend_uid}
+            try:
+                add_friendship(client, person_username, friend_username, since=since, close=close)
+                summary['processed'] += 1
+            except Exception as e:
+                summary['errors'].append(str(e))
         else:
             friend_ref = {
                 'dgraph.type': 'Person',
                 'username': friend_username.strip().lower(),
                 'name': friend_username,
             }
+            if since:
+                friend_ref['friend|since'] = since
+            if close is not None:
+                friend_ref['friend|close'] = close
 
-        txn = client.txn()
-        try:
-            mutation = {'uid': person_uid, 'friend': [friend_ref]}
-            txn.mutate(set_obj=mutation)
-            txn.commit()
-            summary['processed'] += 1
-        except Exception as e:
-            summary['errors'].append(str(e))
-        finally:
-            txn.discard()
+            txn = client.txn()
+            try:
+                mutation = {'uid': person_uid, 'friend': [friend_ref]}
+                txn.mutate(set_obj=mutation)
+                txn.commit()
+                summary['processed'] += 1
+            except Exception as e:
+                summary['errors'].append(str(e))
+            finally:
+                txn.discard()
 
     return summary
 
